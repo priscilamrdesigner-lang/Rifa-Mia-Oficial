@@ -9,7 +9,7 @@ const PIX_KEY = "14184167705";
 const WHATSAPP_NUMBER = "55229921191137";
 
 // COLE A SUA URL DO GOOGLE APPS SCRIPT AQUI ENTRE AS ASPAS
-const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbwI0ZP0-eKQJno_qBocL2WSQaubLfIvmGJHOfQFszV2gSzOgqMD5z0cm-_yaZvLSzQ3/exec";
+const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbxTfnyv_XrOpe6URgnsjc4NJIWeBuWj5HiY4n9T3O3Iog9uN_WsNaCoZAmU41c40ObN/exec";
 
 // Using the user's provided photo from Google Drive with the correct direct link format
 const MIA_PHOTO = "https://drive.google.com/uc?export=view&id=13_xWnd0XyCY-cgyroR-TuAElxQ9ubMJe";
