@@ -1,19 +1,16 @@
 import { useState, useEffect, useMemo, ChangeEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, Search, Copy, CheckCircle2, ShieldCheck, User, Phone, MessageCircle } from 'lucide-react';
+import { Heart, Search, Copy, CheckCircle2, ShieldCheck, User, Phone, MessageCircle, RefreshCw } from 'lucide-react';
 
-// Configuration
+// === CONFIGURAÇÕES ===
 const TOTAL_NUMBERS = 300;
 const PRIZE_DESCRIPTION = "Gift Card Shopee R$300";
 const PIX_KEY = "14184167705";
-const WHATSAPP_NUMBER = "55229921191137";
+const WHATSAPP_NUMBER = "5522992119137";
 
-// COLE A SUA URL DO GOOGLE APPS SCRIPT AQUI ENTRE AS ASPAS
-const GOOGLE_SHEET_URL = "AKfycbztNBeYD8CjW1xyw3dZLwZGlb2VU2hlwkDNiPREPpwc-4SY0ITT_R4ItXmedQkTMJf3";
-
-// Using the user's provided photo from Google Drive with the correct direct link format
-const MIA_PHOTO = "https://drive.google.com/uc?export=view&id=13_xWnd0XyCY-cgyroR-TuAElxQ9ubMJe";
-// Backup photo: "https://images.unsplash.com/photo-1548247416-ec66f4900b2e?auto=format&fit=crop&q=80&w=800"
+// COLE O SEU LINK DO GOOGLE SCRIPT AQUI ENTRE AS ASPAS
+const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbx8NgVa0yZ2Ge4Nknr8RYZVMS_eqsRUwwWB778qPlhTv9c16-8iTcVeD9_7RafpDY3q/exec";
+const MIA_PHOTO = "https://lh3.googleusercontent.com/d/13_xWnd0XyCY-cgyroR-TuAElxQ9ubMJe";
 
 export default function App() {
   const [selectedNumbers, setSelectedNumbers] = useState<number[]>([]);
@@ -24,17 +21,374 @@ export default function App() {
   const [isSuccessModal, setIsSuccessModal] = useState(false);
   const [copied, setCopied] = useState(false);
   
-  // Photo State with persistence
   const [userPhoto, setUserPhoto] = useState<string | null>(null);
-  
   const [userName, setUserName] = useState('');
   const [userWhatsapp, setUserWhatsapp] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // Persistence for numbers and photo
+  // === FUNÇÃO DE SINCRONIZAÇÃO (BUSCA DADOS DA PLANILHA) ===
+  const fetchSyncData = async () => {
+    if (!GOOGLE_SHEET_URL) return;
+    setIsSyncing(true);
+    try {
+      // O t=${Date.now()} evita que o celular use uma versão velha (cache)
+      const response = await fetch(`${GOOGLE_SHEET_URL}?action=read&t=${Date.now()}`);
+      const data = await response.json();
+      if (data && data.paidNumbers) {
+        setPaidNumbers(data.paidNumbers);
+        // Salva localmente como backup
+        localStorage.setItem('mia_paid_numbers', JSON.stringify(data.paidNumbers));
+      }
+    } catch (error) {
+      console.warn("Sincronizando via backup local...");
+      const saved = localStorage.getItem('mia_paid_numbers');
+      if (saved) setPaidNumbers(JSON.parse(saved));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Carregamento inicial e Auto-Sync a cada 15 segundos
   useEffect(() => {
-    const savedNumbers = localStorage.getItem('mia_paid_numbers');
-    if (savedNumbers) setPaidNumbers(JSON.parse(savedNumbers));
+    const savedPhoto = localStorage.getItem('mia_user_photo');
+    if (savedPhoto) setUserPhoto(savedPhoto);
+
+    fetchSyncData();
+    const interval = setInterval(fetchSyncData, 15000); // Sincroniza a cada 15 seg
+    return () => clearInterval(interval);
+  }, []);
+
+  const handlePhotoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setUserPhoto(base64String);
+        localStorage.setItem('mia_user_photo', base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // === SALVAR PAGAMENTO (ADMIN CONFIGURANDO NO PC) ===
+  const savePaidNumbers = async (numbers: number[]) => {
+    setPaidNumbers(numbers);
+    localStorage.setItem('mia_paid_numbers', JSON.stringify(numbers));
     
+    if (isAdminMode && GOOGLE_SHEET_URL) {
+      try {
+        await fetch(GOOGLE_SHEET_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update_paid_list',
+            paidNumbers: numbers
+          })
+        });
+        // Força uma atualização após salvar
+        setTimeout(fetchSyncData, 2000);
+      } catch (e) {
+        console.error("Erro ao salvar lista paga:", e);
+      }
+    }
+  };
+
+  const handleNumberClick = (num: number) => {
+    if (paidNumbers.includes(num) && !isAdminMode) return;
+    if (isAdminMode) {
+      const newPaid = paidNumbers.includes(num) 
+        ? paidNumbers.filter(n => n !== num) 
+        : [...paidNumbers, num];
+      savePaidNumbers(newPaid);
+      return;
+    }
+    setSelectedNumbers(prev => prev.includes(num) ? prev.filter(n => n !== num) : [...prev, num]);
+  };
+
+  const calculateTotal = useMemo(() => {
+    const count = selectedNumbers.length;
+    const groupsOfThree = Math.floor(count / 3);
+    const individualOnes = count % 3;
+    return (groupsOfThree * 25) + (individualOnes * 10);
+  }, [selectedNumbers]);
+
+  const copyPix = () => {
+    navigator.clipboard.writeText(PIX_KEY);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // === CONFIRMAR RESERVA (ENVIA PARA PLANILHA NA HORA) ===
+  const handleFinalReserve = async () => {
+    if (!userName || !userWhatsapp) {
+      alert("Por favor, preencha seu nome e WhatsApp.");
+      return;
+    }
+    
+    setIsSending(true);
+    
+    if (GOOGLE_SHEET_URL) {
+      try {
+        await fetch(GOOGLE_SHEET_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'reserve',
+            nome: userName,
+            whatsapp: userWhatsapp,
+            numeros: selectedNumbers.sort((a,b)=>a-b).join(', '),
+            valor: calculateTotal,
+            data: new Date().toLocaleString('pt-BR')
+          })
+        });
+      } catch (error) {
+        console.error("Erro ao enviar reserva:", error);
+      }
+    }
+
+    setIsSending(false);
+    setIsModalOpen(false);
+    setIsSuccessModal(true);
+  };
+
+  return (
+    <div className="min-h-screen pb-40 bg-gray-50">
+      {/* Botão de Sync Flutuante (Visual) */}
+      {isSyncing && (
+        <div className="fixed top-4 right-4 z-50 bg-white/80 p-2 rounded-full shadow-sm">
+          <RefreshCw className="w-4 h-4 text-lilas animate-spin" />
+        </div>
+      )}
+
+      <section className="hero-gradient pt-10 pb-8 px-5 text-center relative overflow-hidden">
+        <div className="absolute top-[-60px] right-[-60px] w-52 h-52 bg-rosa/15 rounded-full blur-3xl"></div>
+        <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="hero-img-wrap relative group mx-auto">
+          <img src={userPhoto || MIA_PHOTO} alt="Mia" className="w-full h-full object-contain filter drop-shadow-lg" referrerPolicy="no-referrer" />
+          {isAdminMode && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-full">
+              <label className="cursor-pointer text-white text-[0.6rem] font-bold uppercase tracking-widest bg-lilas px-2 py-1 rounded mb-1">
+                Trocar Foto <input type="file" className="hidden" accept="image/*" onChange={handlePhotoUpload} />
+              </label>
+            </div>
+          )}
+        </motion.div>
+        
+        <h1 className="text-2xl font-bold text-lilas-dark leading-tight mt-4">Rifa solidária da Mia ❤️</h1>
+        <p className="text-[0.9rem] text-[#7a5c8a] max-w-[300px] mx-auto mt-2">Sua ajuda é fundamental para a endoscopia da nossa gatinha.</p>
+
+        <div className="prize-badge inline-flex items-center gap-2 bg-white/50 px-4 py-2 rounded-full mt-4 border border-rosa/20">
+          <Heart className="w-4 h-4 fill-rosa text-rosa" />
+          <span className="text-sm font-bold text-rosa-dark">{PRIZE_DESCRIPTION}</span>
+        </div>
+
+        <div className="flex justify-center gap-4 mt-6">
+            <div className="info-card bg-white p-3 rounded-2xl shadow-sm border border-pink-50 min-w-[100px]">
+              <div className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-wider">1 Número</div>
+              <div className="text-rosa-dark font-bold">R$ 10,00</div>
+            </div>
+            <div className="info-card bg-white p-3 rounded-2xl shadow-sm border border-lilas-light/20 min-w-[100px]">
+              <div className="text-[0.6rem] font-bold text-gray-400 uppercase tracking-wider">Combo 3</div>
+              <div className="text-lilas font-bold">R$ 25,00</div>
+            </div>
+        </div>
+      </section>
+
+      <div className="px-5 -mt-4 relative z-10">
+        <div className="bg-white rounded-2xl p-4 shadow-xl flex items-center gap-3 border border-rosa-light/50">
+          <Search className="w-5 h-5 text-gray-300" />
+          <input 
+            type="text" 
+            placeholder="Buscar seu número..." 
+            className="w-full outline-none text-sm font-medium" 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+          />
+        </div>
+      </div>
+
+      <main className="px-5 mt-8 max-w-[600px] mx-auto">
+        <div className="flex justify-between items-center mb-4 px-1">
+          <h2 className="text-sm font-bold text-gray-500 uppercase tracking-widest">Selecione:</h2>
+          <div className="flex gap-3 text-[0.65rem] font-bold">
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-verde-light"></div>Livre</span>
+            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-vermelho"></div>Pago</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2">
+          {Array.from({ length: TOTAL_NUMBERS }, (_, i) => i + 1)
+            .filter(num => searchTerm ? num.toString().includes(searchTerm) : true)
+            .map((num) => (
+            <button 
+              key={num} 
+              onClick={() => handleNumberClick(num)} 
+              className={`num-btn aspect-square rounded-xl text-sm font-bold transition-all duration-200 border-b-4 
+                ${paidNumbers.includes(num) 
+                  ? 'bg-vermelho border-vermelho-dark text-white' 
+                  : selectedNumbers.includes(num) 
+                    ? 'bg-lilas border-lilas-dark text-white scale-95 shadow-inner' 
+                    : 'bg-verde-light border-[#c5e8d5] text-verde-dark hover:bg-verde hover:text-white'
+                }`}
+            >
+              {num}
+            </button>
+          ))}
+        </div>
+
+        <div className="explain-box mt-10 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+          <h3 className="text-sm font-bold text-lilas-dark mb-4 flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4" /> Passo a passo:
+          </h3>
+          <div className="space-y-4">
+             <div className="flex gap-3">
+               <div className="w-6 h-6 rounded-full bg-rosa/10 text-rosa flex items-center justify-center text-xs font-bold shrink-0">1</div>
+               <p className="text-xs text-gray-600 leading-relaxed">Escolha seus números favoritos na tabela acima.</p>
+             </div>
+             <div className="flex gap-3">
+               <div className="w-6 h-6 rounded-full bg-rosa/10 text-rosa flex items-center justify-center text-xs font-bold shrink-0">2</div>
+               <p className="text-xs text-gray-600 leading-relaxed">Clique em <b>Reservar</b> e informe seu nome e WhatsApp.</p>
+             </div>
+             <div className="flex gap-3">
+               <div className="w-6 h-6 rounded-full bg-rosa/10 text-rosa flex items-center justify-center text-xs font-bold shrink-0">3</div>
+               <p className="text-xs text-gray-600 leading-relaxed">Faça o Pix e nos envie o comprovante. Confirmaremos seu número em segundos!</p>
+             </div>
+          </div>
+        </div>
+      </main>
+
+      <div className="mt-12 px-5 flex flex-col items-center gap-4 pb-20">
+        <button 
+          onClick={() => setIsAdminMode(!isAdminMode)} 
+          className="text-[0.65rem] font-bold py-2 px-4 rounded-full border border-gray-200 text-gray-400 uppercase tracking-widest hover:bg-gray-100 transition-colors"
+        >
+          {isAdminMode ? "Sair do Modo Editor" : "Acesso Restrito"}
+        </button>
+        <p className="text-[0.6rem] text-gray-300">Mia Rifa Versão 2.4 - Sincronização Ativa</p>
+      </div>
+
+      <AnimatePresence>
+        {selectedNumbers.length > 0 && !isAdminMode && (
+          <motion.div 
+            initial={{ y: 100 }} animate={{ y: 0 }} exit={{ y: 100 }}
+            className="fixed bottom-0 left-0 right-0 p-5 bg-white/90 backdrop-blur-md border-t border-rosa-light/30 shadow-[0_-10px_40px_rgba(0,0,0,0,0.05)] z-40"
+          >
+            <div className="max-w-[600px] mx-auto flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <div className="text-[0.6rem] font-black text-gray-400 uppercase tracking-wider mb-1">
+                  {selectedNumbers.length} {selectedNumbers.length === 1 ? 'Número' : 'Números'}
+                </div>
+                <div className="text-2xl font-black text-lilas-dark leading-none">
+                  R$ {calculateTotal.toFixed(2)}
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsModalOpen(true)} 
+                className="bg-lilas hover:bg-lilas-dark text-white px-8 py-4 rounded-2xl font-bold transition-all active:scale-95 shadow-lg shadow-lilas/20"
+              >
+                Reservar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="bg-white rounded-3xl p-7 w-full max-w-[450px] shadow-2xl">
+            <h2 className="text-xl font-black text-lilas-dark mb-2">Quase lá! 🐾</h2>
+            <p className="text-gray-500 text-sm mb-6">Informe seus dados para que possamos identificar seu pagamento.</p>
+            
+            <div className="space-y-4 mb-8">
+              <div className="relative">
+                <User className="absolute left-4 top-4 w-5 h-5 text-gray-300" />
+                <input 
+                  type="text" 
+                  placeholder="Seu Nome Completo" 
+                  className="w-full bg-gray-50 p-4 pl-12 rounded-2xl outline-none border-2 border-transparent focus:border-lilas/20 transition-all" 
+                  value={userName} 
+                  onChange={(e) => setUserName(e.target.value)} 
+                />
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-4 top-4 w-5 h-5 text-gray-300" />
+                <input 
+                  type="tel" 
+                  placeholder="Seu WhatsApp" 
+                  className="w-full bg-gray-50 p-4 pl-12 rounded-2xl outline-none border-2 border-transparent focus:border-lilas/20 transition-all" 
+                  value={userWhatsapp} 
+                  onChange={(e) => setUserWhatsapp(e.target.value)} 
+                />
+              </div>
+            </div>
+
+            <div className="bg-rosa/5 p-5 rounded-2xl mb-8 border border-rosa/10">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <div className="text-[0.6rem] font-bold text-rosa/60 uppercase mb-1">Chave PIX (Telefone)</div>
+                  <div className="font-black text-lilas-dark text-lg">{PIX_KEY}</div>
+                </div>
+                <button 
+                  onClick={copyPix} 
+                  className={`p-3 rounded-xl transition-all ${copied ? 'bg-green-500 text-white' : 'bg-white text-rosa shadow-sm border border-rosa/10'}`}
+                >
+                  {copied ? <CheckCircle2 className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+                </button>
+              </div>
+              <p className="text-[0.65rem] text-rosa-dark/60 italic leading-relaxed text-center">
+                Você pode copiar a chave acima e pagar no seu banco.<br/>Após clicar em confirmar, nos envie o comprovante!
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setIsModalOpen(false)} className="flex-1 py-4 text-gray-400 font-bold text-sm">Cancelar</button>
+              <button 
+                onClick={handleFinalReserve} 
+                disabled={isSending}
+                className="flex-[2] bg-lilas text-white py-4 rounded-2xl font-bold shadow-lg shadow-lilas/20 active:scale-95 transition-all"
+              >
+                {isSending ? "Processando..." : "Confirmar Reserva"}
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {isSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
+          <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-[40px] p-10 text-center w-full max-w-[400px] shadow-2xl relative">
+            <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl">
+              ✓
+            </div>
+            <h2 className="text-2xl font-black text-lilas-dark mb-4">Sucesso!</h2>
+            <p className="text-gray-500 text-sm mb-8 leading-relaxed">
+              Tudo pronto, <b>{userName}</b>! Agora é só nos enviar o comprovante para ativarmos seus números.
+            </p>
+            
+            <a 
+              href={`https://wa.me/${WHATSAPP_NUMBER}?text=Olá!%20Acabei%20de%20reservar%20os%20números%20${selectedNumbers.join(',%20')}%20para%20ajudar%20a%20Mia.%20Aqui%20está%20o%20comprovante!`}
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="w-full inline-flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white rounded-2xl py-5 font-bold mb-4 shadow-lg shadow-green-200 transition-all active:scale-95"
+            >
+              <MessageCircle className="w-5 h-5" /> Enviar Comprovante
+            </a>
+            
+            <button 
+              onClick={() => { setIsSuccessModal(false); setSelectedNumbers([]); }} 
+              className="text-gray-300 text-xs font-bold uppercase tracking-widest hover:text-gray-500"
+            >
+              Voltar ao Site
+            </button>
+          </motion.div>
+        </div>
+      )}
+    </div>
+  );
+}    
     const savedPhoto = localStorage.getItem('mia_user_photo');
     if (savedPhoto) setUserPhoto(savedPhoto);
   }, []);
