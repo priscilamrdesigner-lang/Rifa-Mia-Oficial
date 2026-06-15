@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --color-rosa: #FF4D8D;
+  --color-rosa-light: #FFE0ED;
+  --color-rosa-dark: #cc2e6a;
+  --color-lilas: #9D4EDD;
+  --color-lilas-light: #EDE0F8;
+  --color-lilas-dark: #7a34b8;
+  --color-gray-light: #F5F5F5;
+  --color-gray-mid: #e8e8e8;
+  --color-verde: #22C55E;
+  --color-amarelo: #F59E0B;
+  --color-vermelho: #EF4444;
+  
+  --font-sans: 'DM Sans', sans-serif;
+  --font-serif: 'Playfair Display', serif;
+}
+
+@layer base {
+  body {
+    @apply bg-[var(--color-gray-light)] text-[#333] antialiased m-0 p-0 font-sans;
+  }
+  h1, h2, h3 {
+    @apply font-serif;
+  }
+}
+
+/* Custom Component Styles */
+.hero-gradient {
+  background: linear-gradient(160deg, #ffe0ed 0%, #ede0f8 100%);
+}
+
+.hero-img-wrap {
+  @apply w-[180px] h-[180px] mx-auto mb-5 flex items-center justify-center relative;
+}
+
+.hero-img-wrap img {
+  @apply w-full h-full object-contain filter drop-shadow-lg;
+}
+
+.prize-badge {
+  @apply inline-flex items-center gap-2 bg-white border-2 border-rosa rounded-[50px] px-5 py-2 text-[0.9rem] font-semibold text-rosa-dark mb-6 shadow-[0_4px_24px_rgba(255,77,141,0.1)];
+}
+
+.btn-primary-custom {
+  @apply inline-block bg-gradient-to-br from-rosa to-lilas text-white border-none rounded-[50px] px-9 py-3.5 text-base font-semibold cursor-pointer no-underline transition-all duration-200 shadow-[0_4px_20px_rgba(255,77,141,0.35)] hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(255,77,141,0.45)] active:scale-[0.97];
+}
+
+.info-card {
+  @apply bg-white rounded-xl p-3 text-center shadow-[0_2px_12px_rgba(157,78,221,0.1)];
+}
+
+.explain-box {
+  @apply bg-white rounded-2xl p-6 shadow-[0_4px_24px_rgba(255,77,141,0.1)] mb-4;
+}
+
+.num-btn {
+  @apply aspect-square rounded-xl border-2 border-transparent text-[0.78rem] font-semibold cursor-pointer transition-all duration-150 flex items-center justify-center bg-white text-[#333] shadow-[0_2px_6px_rgba(0,0,0,0.06)] select-none hover:scale-[1.08] hover:shadow-[0_4px_14px_rgba(157,78,221,0.2)];
+}
+
+.num-btn.verde { @apply bg-[#dcfce7] border-[#86efac] text-[#15803d]; }
+.num-btn.amarelo { @apply bg-[#fef3c7] border-[#fcd34d] text-[#92400e]; }
+.num-btn.vermelho { @apply bg-[#fee2e2] border-[#fca5a5] text-[#991b1b] cursor-not-allowed opacity-75 grayscale-[0.3]; }
+.num-btn.selecionado { @apply bg-gradient-to-br from-rosa-light to-lilas-light border-rosa text-rosa-dark scale-[1.08] shadow-[0_4px_14px_rgba(255,77,141,0.25)]; }
+
+/* Summary & Modals */
+.summary-wrap {
+  @apply fixed bottom-0 left-0 right-0 bg-white border-t-2 border-rosa-light p-4 shadow-[0_-4px_20px_rgba(255,77,141,0.12)] z-40;
+}
+
+.modal-slide-up {
+  @apply bg-white rounded-t-[24px] sm:rounded-[24px] p-7 w-full max-w-[520px] max-h-[92vh] overflow-y-auto;
+}
+
+/* Hide scrollbar */
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
